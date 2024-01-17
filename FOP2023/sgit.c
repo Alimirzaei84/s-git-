@@ -1,14 +1,15 @@
-//#include"foo.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
 #include <unistd.h>
 #include <windows.h>
-#include<io.h>
+#include <io.h>
 #include <stdbool.h>
 #define MAX 200
+#define NEAT system("cls");
 
 int is_valid_command(const char *command) {
   char buffer[256];
@@ -17,14 +18,14 @@ int is_valid_command(const char *command) {
   return result == 0;
 }
 
-void Make_a_hidden_dir(const char *dirName, const char *message_success){
+void Make_a_hidden_dir(const char *dirName, const char *message_success, char *failed_message){
     DIR* dir;
     char currentDir[FILENAME_MAX];
     _getcwd(currentDir, sizeof(currentDir));
     while(1) {
         dir = opendir(dirName);
         if (dir) {
-            printf("There is already exists!\n");
+            printf("%s\n", failed_message);
             closedir(dir);
             break;
         } else if (ENOENT == errno) {
@@ -67,7 +68,6 @@ void Set_Config(char **argv){
             config_alias(argv);
             return;
         }
-    
     if(config == NULL) {
         printf("Try again!\n");
     } else {
@@ -80,6 +80,7 @@ void Set_Config(char **argv){
         printf("The config is now set\n");
     }
 }
+
 void Load_alias(char **argv){
     FILE *f = fopen("alias.txt", "r");
     if(f == NULL){
@@ -98,13 +99,92 @@ void Load_alias(char **argv){
     fclose(f); 
 }
 
+int is_file_or_dir(const char* str) {
+    WIN32_FIND_DATA fd;
+    HANDLE h = FindFirstFile(str, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD err = GetLastError();
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
+            return -1;
+        } else {
+            return -2;
+        }
+    }
+    FindClose(h);
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+int copy_file(char *source, char *dest){
+  char buffer[100];
+  if (access(dest, W_OK) == 0) {
+    sprintf(buffer, "copy %s %s \n ", source, dest);
+    return system(buffer);
+  } else {
+    printf("Error: Cannot copy file to %s\n", dest);
+    return 1;
+  }
+}
+
+int copy_dir(char *source, char *dest){
+  char buffer[100];
+  if (access(dest, F_OK) == 0) {
+    sprintf(buffer, "xcopy %s %s  /s /e /h \n  ",source, dest);
+    return system(buffer);
+  } else {
+    printf("Error: Cannot copy directory to %s\n", dest);
+    return 1;
+  }
+}
+
+void add(char *s){
+   if(is_file_or_dir(s)){
+     if(copy_dir(s, ".sgit\\.staging") == 0){NEAT
+           FILE *status =  fopen(".sgit\\.status.txt", "a");
+          fprintf(status, "%s ", s);
+          printf("\n ********* Adding Successfully      *********\n********* Do you enjoy using Sgit? *********\n");
+        return;
+     }
+   }
+   else if(copy_file(s, ".sgit\\.staging") == 0){NEAT
+      FILE *status =  fopen(".sgit\\.status.txt", "a");
+      fprintf(status, "%s ", s);
+      printf("\n ********* Adding Successfully      *********\n ********* Do you enjoy using Sgit? *********\n");
+        return;
+   }
+   else printf("\nError\n");
+}
+
 int main(int argc, char **argv){
     char main_command[MAX]; strcpy(main_command, argv[1]);
-     if(!strcmp(main_command, "init")) {Make_a_hidden_dir(".sgit", "\n The local repo created :)) \n\n");
+    //init>>
+     if(!strcmp(main_command, "init")) {
+        Make_a_hidden_dir(".sgit", "\n The local repo created :)) \n\n", "There is already exists!");
+        _chdir(".sgit");
+        Make_a_hidden_dir(".staging", "\n And intitialized \n\n", "\n");
+        FILE *status =  fopen("status.txt", "a");
+       // Make_a_hidden_dir(".commits", "\n And intitialized \n\n", "\n");
       return 0;
      }
-     _chdir(".sgit");
-     if(!strcmp(main_command, "config")) Set_Config(argv);
+     //config>>
+     if(!strcmp(main_command, "config")){
+         _chdir(".sgit");
+       Set_Config(argv);
+     }
+     //add>>
+     else if(!strcmp(main_command, "add")){
+         if(!strcmp(argv[2],"-f")) {
+            for (int i = 3 ;i < argc;i++)
+            add(argv[i]);
+         }
+         else if(!strcmp(argv[2], "-n")){
+
+         }
+         else add(argv[2]);
+     }
+     //maybe it is an alias>>
      else Load_alias(argv);
     return 0;
 }
