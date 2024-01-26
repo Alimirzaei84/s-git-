@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include<libgen.h>
 #include <sys/types.h>
+#include <time.h>
 
 int dir_exists(char *path) {
     struct stat st;
@@ -51,6 +52,21 @@ void create_hidden_dir() {
         strcpy(path, cwd);
         strcat(path, "/.sgit");
         mkdir(path, 0777);
+        char path_of_commits[1024];
+        strcpy(path_of_commits, cwd);
+        strcat(path_of_commits, "/.sgit/.commits");
+        mkdir(path_of_commits, 0777);
+        FILE *fp = fopen(".sgit/.commits/hash_commit.txt", "w");
+        if(fp == NULL){
+            exit(1);
+        }
+        fprintf(fp, "%d", 100);
+        fclose(fp);
+        fp = fopen(".sgit/.commits/log.txt", "w");
+        if(fp == NULL){
+            exit(1);
+        }
+        fclose(fp);
         printf("Created a local repository in %s\n", path);
     }
     else printf("error!!");
@@ -156,7 +172,7 @@ void config_alias(char **argv){
         fclose(alias);
     }
     else {
-        FILE *alias = fopen("alias.txt", "a");
+        FILE *alias = fopen(".sgit/alias.txt", "a");
         char *name_of_alias = strstr(argv[2], ".");
         memmove(name_of_alias, name_of_alias + 1 , strlen(name_of_alias));
         char alias_command[100];
@@ -188,8 +204,8 @@ void Set_Config(char **argv){
             return;
         }
     }
-        else if(!strcmp(argv[2], "user.name")) config = fopen("username.txt", "w");
-        else if(!strcmp(argv[2], "user.email")) config = fopen("useremail.txt", "w");
+        else if(!strcmp(argv[2], "user.name")) config = fopen(".sgit/username.txt", "w");
+        else if(!strcmp(argv[2], "user.email")) config = fopen(".sgit/useremail.txt", "w");
         else {
             config_alias(argv);
             return;
@@ -211,7 +227,7 @@ int load_alias(char *alias_name) {
     char line[300];
     FILE *alias;
 
-    if ((alias = fopen("alias.txt", "r")) != NULL) {
+    if ((alias = fopen(".sgit/alias.txt", "r")) != NULL) {
         while (fgets(line, 300, alias) != NULL) {
             char *aliases = strtok(line, " ");
             char *command = strtok(NULL, "\n");
@@ -249,11 +265,10 @@ void status(){
   strcat(cwd, "/.sgit/.staging");
   char command[512];
   sprintf(command, "diff -srq  %s . ", cwd);
-  int status;
   fp = popen(command, "r");
   if (fp == NULL) {
     fprintf(stderr, "Error opening pipe\n");
-    return 1;
+    exit(1);
   }
   while (fgets(buffer, sizeof(buffer), fp) != NULL) {
     char temp[1024];
@@ -292,6 +307,211 @@ void status(){
   pclose(fp);  
 }
 
+char *find_name() {
+  char *name = malloc(128 * sizeof(char));
+  FILE *fp = fopen(".sgit/username.txt", "r");
+  if (fp == NULL) {
+    fp = fopen("/username.txt", "r");
+    if (fp == NULL) {
+      perror("please set your name\n");
+      exit(1);
+    } else {
+      fscanf(fp, "%s", name);
+      fclose(fp);
+    }
+  } else {
+    fscanf(fp, "%s", name);
+    fclose(fp);
+  }
+
+  return name;
+}
+
+
+char *find_email() {
+  char *email = malloc(128 * sizeof(char));
+  FILE *fp = fopen(".sgit/useremail.txt", "r");
+  if (fp == NULL) {
+    fp = fopen("/useremail.txt", "r");
+    if (fp == NULL) {
+      perror("please set your email\n");
+      exit(1);
+    } else {
+      fscanf(fp, "%s", email);
+      fclose(fp);
+    }
+  } else {
+    fscanf(fp, "%s", email);
+    fclose(fp);
+  }
+
+  return email;
+}
+
+
+int commit(char *mess){
+    char cwd[1024];
+    char path_of_staging[1024];
+    char path_of_commits[1024];
+    char buffer[2048];
+    char saving_file[2048];
+    char new_file[2048];
+
+    getcwd(cwd, sizeof(cwd));
+    strcpy(path_of_staging, cwd);
+    strcat(path_of_staging, "/.sgit/.staging");
+   if(!dir_exists(path_of_staging)){
+    perror("Please add something\n");
+    return -1;
+   }
+   if(strlen(mess) > 72){
+    perror("the message is too long\n");
+    return -1;
+   }
+   int commit_ID = 0;;
+   FILE *hash = fopen(".sgit/.commits/hash_commit.txt", "r");
+   if(hash == NULL){
+    perror("Try again later\n");
+    return -1;
+   }
+   fscanf(hash, "%d", &commit_ID);
+   fclose(hash);
+   hash = fopen(".sgit/.commits/hash_commit.txt", "w");
+   commit_ID++;
+   fprintf(hash, "%d", commit_ID);
+   fclose(hash);
+   sprintf(path_of_commits, ".sgit/.commits/number%d", commit_ID);
+
+    FILE *original_file = fopen(".sgit/.commits/log.txt", "r");
+    FILE *temp_file = fopen(".sgit/.commits/temp.txt", "w");
+     char *name = find_name();
+     char *email = find_email();
+     //char *branch = find_branch();
+     char *branch = find_name();
+     fprintf(temp_file,"number%d\n%s\n%s\n%s\n%s\n", commit_ID, branch, mess, name, email);
+    free(name);
+    free(branch);
+     time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+    fprintf(temp_file,"%d-%02d-%02d %02d:%02d:%02d\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    
+     char *dir = ".sgit/.staging";
+    char *command = "find ";
+    char *options = "-type f -printf \"%p\\n\"";
+    char *full_command = malloc(strlen(command) + strlen(dir) + strlen(options) + 1);
+    sprintf(full_command, "%s%s %s", command, dir, options);
+    FILE *fp;
+    char path[1035];
+    fp = popen(full_command, "r");
+    if (fp == NULL) {
+        printf("Failed to run command\n" );
+        exit(1);
+    }
+    while (fgets(path, sizeof(path)-1, fp) != NULL) {
+        puts(path);
+        char *tok = strchr(path, '/');
+        tok++;
+        tok  = strchr(tok, '/');
+        tok++;
+        fputs(tok, temp_file);
+    }
+    fprintf(temp_file, "\n");
+    
+    char bufffer[1024];
+    while (fgets(bufffer, sizeof(bufffer), original_file)) {
+        fprintf(temp_file, "%s", bufffer);
+    }
+    fclose(temp_file);
+     remove(".sgit/.commits/log.txt");
+     rename(".sgit/.commits/temp.txt", ".sgit/.commits/log.txt");
+    pclose(fp);
+    free(full_command);
+    sprintf(buffer, "sudo mv %s* %s ", path_of_staging, path_of_commits);
+    system(buffer);
+    return 0;
+}
+
+
+void LOG(int argc,char **argv){
+    int count_of_commits = 0;
+    FILE *log = fopen(".sgit/.commits/log.txt", "r");
+    if (!log) {
+        perror("Error opening log file.");
+        exit(1);
+     }
+     char line[1024];
+     char line_branch[1024];
+     char line_message[1024];
+     char line_name[1024];
+     char line_email[1024]; 
+     char line_time[1024];
+     while ((fgets(line, sizeof(line), log)) != NULL){
+       if(!strncmp(line, "number", 6)){
+        count_of_commits++;
+        static bool flag = false;
+        fgets(line_branch, sizeof(line), log);
+        fgets(line_message, sizeof(line), log);
+        fgets(line_name, sizeof(line), log);
+        fgets(line_email, sizeof(line), log);
+        fgets(line_time, sizeof(line), log);
+
+        int count_of_files = 0;
+        char temp_line[1024];
+        do{
+          fgets(temp_line, sizeof(line), log);
+          count_of_files++;
+        } while(strcmp(temp_line, "\n"));
+        count_of_files--;
+        
+        static struct tm date1 = {0};
+        static struct tm date2 = {0};
+        char date_of_commit[128];
+        strncpy(date_of_commit, line_time, 10);
+        strptime(date_of_commit, "%Y-%m-%d", &date1);
+        strptime(argv[3], "%Y-%m-%d", &date2);
+        double diff = difftime(mktime(&date2), mktime(&date1));
+
+        if(argc == 2){
+            flag =true;
+        }
+        else if(!strcmp(argv[2], "-n") && (count_of_commits <= atoi(argv[3]))){
+            flag = true;
+        }
+        else if(!strcmp(argv[2], "-branch") && strstr(line_branch, argv[3])){
+            flag = true;
+        }
+        else if(!strcmp(argv[2], "-author") && strstr(line_name, argv[3])){
+            flag = true;
+        }
+        else if(!strcmp(argv[2], "-search") && strstr(line_message, argv[3])){
+            flag = true;
+        }
+        else if(!strcmp(argv[2], "-before") && (diff>=0)){
+            flag = true;
+        }
+        else if(!strcmp(argv[2], "-since") && (diff<=0)){
+            flag = true;
+        }
+
+        if(flag){
+        printf("\n********************\n");
+        printf("Commit with Id %s ", line);
+        printf("Commit message : %s ", line_message);
+        printf("Author name : %s ", line_name);
+        printf("Author email : %s ", line_email);
+        printf("DATE and Time of Commit : %s ", line_time);
+        printf("In branch : %s ", line_branch);
+        printf("number of files in this commit : %d \n", count_of_files);
+        printf("\n********************\n");
+        printf("\n\n");
+        }
+       }
+     }
+        
+
+    fclose(log);
+}
+
 
 int main(int argc, char **argv){
      char main_command[100]; strcpy(main_command, argv[1]);
@@ -324,8 +544,19 @@ int main(int argc, char **argv){
         status();
      }
      //commit>>
-     
-     
+     else if(!strcmp(main_command, "commit")){
+        if(argc < 4){
+            printf("Commit message please!\n");
+            return 0;
+        }
+        if(commit(argv[3]) == 0){
+            printf("Commit successfully\n");
+        }
+     }
+     //Log command>>
+     else if(!strcmp(main_command, "log")){
+        LOG(argc,argv);
+     }
      //maybe it is an alias>>
      else if(!load_alias(argv[1])) {
         printf("\n Yes this was an alias\n");
