@@ -18,17 +18,9 @@
 #define ANSI_COLOR_BLUE "\x1b[34m"
 #define ANSI_COLOR_RESET "\x1b[0m"
 
-#define Find_a_Repository           \
-  if (strcmp(main_command, "init")) \
-                                    \
-  {                                 \
-    while (!dir_exists(".sgit"))    \
-      \                           
-                                                                                                                                                                                                                                                                             \
-      {                             \
-        chdir("..");                \
-      }                             \
-  }
+#define Find_a_Repository      \
+  while (!dir_exists(".sgit")) \
+    chdir("..");
 
 // tree --sort ctime -I "*time*|-a"
 
@@ -59,6 +51,8 @@ int compare_files(const char *file1, const char *file2)
 
   if (f1 == NULL || f2 == NULL)
   {
+    puts(file1);
+    puts(file2);
     perror("Error opening files");
     return -1;
   }
@@ -77,11 +71,11 @@ int compare_files(const char *file1, const char *file2)
 
   if (is_same && feof(f1) && feof(f2))
   {
-   // printf("Files %s and %s have the same content\n", file1, file2);
+    // printf("Files %s and %s have the same content\n", file1, file2);
   }
   else
   {
-   // printf("Files %s and %s have different content\n", file1, file2);
+    // printf("Files %s and %s have different content\n", file1, file2);
   }
 
   fclose(f1);
@@ -149,6 +143,87 @@ int is_null_space(char *str)
   return 1;
 }
 
+void remove_last_files_or_directories(char *path)
+{
+  Find_a_Repository
+
+      DIR *dir;
+  struct dirent *ent;
+  struct stat st;
+  char **last_files = NULL;
+  time_t last_time = 0;
+  int count = 0;
+
+  if ((dir = opendir(path)) != NULL)
+  {
+    while ((ent = readdir(dir)) != NULL)
+    {
+      char *full_path = (char *)malloc(strlen(path) + strlen(ent->d_name) + 2);
+      sprintf(full_path, "%s/%s", path, ent->d_name); /* printf("%d\n", st.st_mtime);puts(full_path); */
+      if (stat(full_path, &st) == 0 && (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)) && ((st.st_mtime - last_time) > 0) && full_path[strlen(full_path) - 1] != '.')
+      {
+        if (st.st_mtime > last_time)
+        {
+          for (int i = 0; i < count; i++)
+          {
+            free(last_files[i]); // Free each file or directory path
+          }
+          // free(last_files); // Free the array of files or directories
+          count = 0;
+          last_time = min(st.st_mtime, last_time);
+        }
+        last_files = realloc(last_files, (count + 1) * sizeof(char *));
+        last_files[count] = strdup(full_path);
+        count++;
+      }
+      // free(full_path); // Free the memory allocated for full_path
+    }
+    closedir(dir);
+
+    for (int i = 0; i < count; i++)
+    {
+      remove(last_files[i]); // Remove each file or directory
+      free(last_files[i]);   // Free the memory allocated for each file or directory
+    }
+    // free(last_files); // Free the array of files or directories
+  }
+}
+
+char *get_last_file_or_directory(char *path)
+{
+  DIR *dir;
+  struct dirent *ent;
+  struct stat st;
+  char *last_file = NULL;
+  time_t last_time = 0;
+
+  if ((dir = opendir(path)) != NULL)
+  {
+    while ((ent = readdir(dir)) != NULL)
+    {
+      char *full_path = (char *)malloc(strlen(path) + strlen(ent->d_name) + 2);
+      sprintf(full_path, "%s/%s", path, ent->d_name);
+      if (stat(full_path, &st) == 0 && (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)) && st.st_mtime > last_time && full_path[strlen(full_path) - 1] != '.')
+      {
+        last_time = st.st_mtime;
+        free(last_file);
+        last_file = strdup(full_path);
+      }
+      free(full_path);
+    }
+    closedir(dir);
+  }
+
+  if (last_file != NULL)
+  {
+    return last_file;
+  }
+  else
+  {
+    return NULL;
+  }
+}
+
 int strcmp_ignore_spaces(char *s1, char *s2)
 {
   s1[strcspn(s1, "\n")] = '\0';
@@ -177,15 +252,36 @@ int strcmp_ignore_spaces(char *s1, char *s2)
 
 int isvalid_command(const char *command)
 {
-  char buffer[128];
-  snprintf(buffer, sizeof(buffer), "type %s >/dev/null 2>&1", command);
-  return system(buffer) == 0;
+  char sec1[128], sec2[128], buffer[128];
+  sscanf(command, "%s %s ", sec1, sec2);
+  if (strcmp(sec1, "sgit"))
+    return 0;
+
+  Find_a_Repository
+
+      FILE *fp = fopen(".sgit/valid.txt", "r");
+  if (fp == NULL)
+  {
+    perror("Please Install sgit\n");
+    exit(1);
+  }
+  while (fgets(buffer, sizeof(buffer), fp))
+  {
+    buffer[strcspn(buffer, "\n")] = '\0';
+    if (!strcmp(buffer, sec2))
+    {
+      fclose(fp);
+      return 1;
+    }
+  }
+  fclose(fp);
+  return 0;
 }
 
 void copy(char *path, char *dest)
 {
   char command[1024];
-  sprintf(command, "cp -ur %s %s", path, dest);
+  sprintf(command, "cp -ur --parents %s %s", path, dest);
   system(command);
 }
 
@@ -219,7 +315,6 @@ char *find_email()
     }
     if (file1Stat.st_mtime > file2Stat.st_mtime)
     {
-      printf("Opening file1.\n");
       fp = fopen("/mnt/c/Users/hadij/useremail.txt", "r");
       if (fp == NULL)
       {
@@ -229,7 +324,6 @@ char *find_email()
     }
     else
     {
-      printf("Opening file2.\n");
       fp = fopen(".sgit/useremail.txt", "r");
       if (fp == NULL)
       {
@@ -241,7 +335,6 @@ char *find_email()
 
   else if (file1Exists)
   {
-    printf("Opening file1.\n");
     fp = fopen("/mnt/c/Users/hadij/useremail.txt", "r");
     if (fp == NULL)
     {
@@ -252,7 +345,6 @@ char *find_email()
 
   else
   {
-    printf("Opening file2.\n");
     fp = fopen(".sgit/useremail.txt", "r");
     if (fp == NULL)
     {
@@ -296,7 +388,6 @@ char *find_name()
     }
     if (file1Stat.st_mtime > file2Stat.st_mtime)
     {
-      printf("Opening file1.\n");
       fp = fopen("/mnt/c/Users/hadij/username.txt", "r");
       if (fp == NULL)
       {
@@ -306,7 +397,6 @@ char *find_name()
     }
     else
     {
-      printf("Opening file2.\n");
       fp = fopen(".sgit/username.txt", "r");
       if (fp == NULL)
       {
@@ -318,7 +408,6 @@ char *find_name()
 
   else if (file1Exists)
   {
-    printf("Opening file1.\n");
     fp = fopen("/mnt/c/Users/hadij/username.txt", "r");
     if (fp == NULL)
     {
@@ -329,7 +418,6 @@ char *find_name()
 
   else
   {
-    printf("Opening file2.\n");
     fp = fopen(".sgit/username.txt", "r");
     if (fp == NULL)
     {
@@ -516,7 +604,9 @@ int count_of_master_commits_upto_now()
 
 void show_branches_list()
 {
-  FILE *fp = fopen(".sgit/.branches/BranchesList.txt", "r");
+  Find_a_Repository
+
+      FILE *fp = fopen(".sgit/.branches/BranchesList.txt", "r");
   if (!fp)
   {
     exit(1);
@@ -547,7 +637,9 @@ int isnumber(char *string)
 
 int HEAD_of_branch(char *branch_name)
 {
-  FILE *fp = fopen(".sgit/.commits/log.txt", "r");
+  Find_a_Repository
+
+      FILE *fp = fopen(".sgit/.commits/log.txt", "r");
   if (fp == NULL)
   {
     exit(1);
@@ -597,7 +689,14 @@ void push_stash(int argc, char **argv)
   fclose(current_commit);
   fprintf(fp, "On Commit:%d", commit_ID);
   fclose(fp);
-  printf("Push seccessfully\n");
+
+  if (!system("rm -r .sgit/.staging"))
+    printf("Push seccessfully\n");
+  else if (!system("rm -r .sgit/.staging"))
+    printf("Push seccessfully\n");
+  else
+    perror("ERROR!!!!\n");
+  exit(1);
 }
 
 void push_list()
@@ -638,6 +737,11 @@ void diff(char *file1, char *file2, char *lines1, char *lines2)
   int len1 = end_line1 - start_line1 + 1;
   int len2 = end_line2 - start_line2 + 1;
   FILE *f1 = fopen(path1, "r"), *f2 = fopen(path2, "r");
+  if (f1 == NULL || f2 == NULL)
+  {
+    perror("The files do not exist\n");
+    exit(1);
+  }
   char buffer1[512], buffer2[512];
   for (int i = 1; i < start_line1; i++)
   {
@@ -648,7 +752,7 @@ void diff(char *file1, char *file2, char *lines1, char *lines2)
     fgets(buffer2, sizeof(buffer2), f2);
   }
   int min_len = min(len1, len2);
-  for (int i = 0, j = 0; i < min_len && j < min_len;)
+  for (int i = 0, j = 0; i < min_len && j < min_len; i++, j++)
   {
     while (i < min_len && fgets(buffer1, sizeof(buffer1), f1) && is_null_space(buffer1))
     {
@@ -666,13 +770,16 @@ void diff(char *file1, char *file2, char *lines1, char *lines2)
     if (strcmp_ignore_spaces(buffer1, buffer2))
     {
       diffrent = true;
-
+      printf("\n");
+      printf("<< << << << << << \n");
       printf("File : %s-> Line : %d\n", file1, start_line1 + i);
       printf("%s%s%s", ANSI_COLOR_RED, buffer1, ANSI_COLOR_RESET);
       printf("\n");
 
       printf("File : %s-> Line : %d\n", file2, start_line2 + j);
       printf("%s%s%s", ANSI_COLOR_BLUE, buffer2, ANSI_COLOR_RESET);
+      printf("\n");
+      printf(">> >> >> >> >> >> \n");
       printf("\n");
     }
   }
@@ -858,7 +965,7 @@ void tag_list()
   if (fp == NULL)
   {
     printf("Error: could not open file\n");
-    return 1;
+    exit(1);
   }
 
   char **lines = malloc(128 * sizeof(char *));
@@ -936,10 +1043,8 @@ void show_tag(const char *tag_name)
   printf("The tag with name \"%s\" not found!!\n", tag_name);
 }
 
-void Run_revert_command(int commit_ID, char *message, bool new_commit)
-{
-}
 
+#include "information.h"
 
 void create_hidden_dir()
 {
@@ -1016,6 +1121,14 @@ void create_hidden_dir()
         fprintf(fp, "0|Master\n");
         fclose(fp);
 
+        fp = fopen(".sgit/valid.txt", "w");
+        if (fp == NULL)
+        {
+            exit(1);
+        }
+        fprintf(fp, "config\nadd\nreset\nstatus\ncommit\nset\nreplace\nremove\nlog\nbranch\ncheckout\nrevert\ntag\nstash\ngrep\ndiff\nmerge\n");
+        fclose(fp);
+
         // fp = fopen(".sgit/.precommit/hooks.txt", "w");
         // if (fp == NULL)
         // {
@@ -1051,7 +1164,7 @@ void add(char *name)
         perror("Error accessing input path");
         return;
     }
-    char cwd[1024];
+    Find_a_Repository char cwd[1024];
     if (getcwd(cwd, sizeof(cwd)) == NULL)
     {
         perror("Error getting current working directory");
@@ -1065,7 +1178,7 @@ void add(char *name)
         mkdir(dest, 0777);
     }
     copy(input, dest);
-    printf("\nAdd with success\n");
+    printf("Add with success\n");
 }
 
 void check_with_staging_area()
@@ -1077,7 +1190,8 @@ void check_with_staging_area()
         return;
     }
     char base[2048];
-    sprintf(base, "%s/.sgit/.staging", cwd);
+    Find_a_Repository
+        sprintf(base, ".sgit/.staging");
     DIR *dir = opendir(cwd);
     if (dir == NULL)
     {
@@ -1087,10 +1201,9 @@ void check_with_staging_area()
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL)
     {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-        {
+        if (entry->d_name[0] == '.')
             continue;
-        }
+
         char temp[2048];
         sprintf(temp, "%s/%s", base, entry->d_name);
         if (!access(temp, F_OK))
@@ -1112,6 +1225,30 @@ void reset(char *path)
         perror("Error getting current working directory");
         return;
     }
+
+    /* reset -undo */
+    if (!strcmp(path, "-undo"))
+    {
+        // char *last_path = get_last_file_or_directory(".sgit/.staging");
+        // if (last_path == NULL)
+        // {
+        //     perror("Try again\n");
+        //     exit(1);
+        // }
+
+        // char cmd[256];
+        // sprintf(cmd, "rm -r %s ", last_path);
+        // if (!system(cmd))
+        // {
+        //     printf("Resetting the last file or directory was Successfull\n");
+        // }
+
+        // free(last_path);
+        remove_last_files_or_directories(".sgit/.staging");
+        return;
+    }
+
+    /*classis reset*/
     char full_path[1024];
     sprintf(full_path, "%s/.sgit/.staging/%s", cwd, path);
     char buffer[1024];
@@ -1152,7 +1289,7 @@ void config_alias(char **argv)
         fclose(alias);
     }
     else
-    {
+    {    
         FILE *alias = fopen(".sgit/alias.txt", "a");
         char *name_of_alias = strstr(argv[2], ".");
         memmove(name_of_alias, name_of_alias + 1, strlen(name_of_alias));
@@ -1347,16 +1484,19 @@ void status()
     char buffer[4096];
     while (fgets(buffer, sizeof(buffer), cmd))
     {
-        buffer[strcspn(buffer, "\n")] = '\0';
+        buffer[strcspn(buffer, "\n")] = '\0'; // Remove the '\n'
 
         memmove(buffer, buffer + 2, strlen(buffer) - 1);
+
+        Find_a_Repository
+
         if (!search_file(".sgit", buffer))
         {
             printf("-A   %s\n", buffer);
             continue;
         }
 
-        if (!search_file(".sgit/.commits", buffer) && search_file(".sgit/.staging", buffer))
+        else if ((!dir_exists(".sgit/.commits") || !search_file(".sgit/.commits", buffer)) && search_file(".sgit/.staging", buffer))
         {
             printf("+A   %s\n", buffer);
             continue;
@@ -1443,7 +1583,10 @@ void status()
 
 int commit(char *mess, char *swith)
 {
-    char cwd[1024];
+
+    Find_a_Repository
+
+        char cwd[1024];
     char path_of_staging[1024];
     char path_of_commits[1024];
     char buffer[2048];
@@ -1463,7 +1606,12 @@ int commit(char *mess, char *swith)
     }
     if (strlen(mess) > 72)
     {
-        perror("the message is too long\n");
+        perror("The message is too long\n");
+        return -1;
+    }
+    if (strlen(mess) < 3)
+    {
+        perror("The message is too short\n");
         return -1;
     }
     // if(!precommit_situation())
@@ -1537,14 +1685,16 @@ int commit(char *mess, char *swith)
 
     pclose(fp);
     free(full_command);
-    sprintf(buffer, "sudo mv %s* %s ", path_of_staging, path_of_commits);
+    sprintf(buffer, "mv %s* %s ", path_of_staging, path_of_commits);
     system(buffer);
     return 0;
 }
 
 void LOG(int argc, char **argv)
 {
-    size_t count_of_commits = 1;
+    Find_a_Repository
+
+        size_t count_of_commits = 1;
     FILE *log = fopen(".sgit/.commits/log.txt", "r");
     if (!log)
     {
@@ -1558,7 +1708,7 @@ void LOG(int argc, char **argv)
     char line_email[1024];
     char line_time[1024];
     bool flag = false;
-    while ((fgets(line, sizeof(line), log)) != NULL)
+    while (fgets(line, sizeof(line), log))
     {
         if (!strncmp(line, "number", 6))
         {
@@ -1643,6 +1793,8 @@ void Run_branch_command(int argc, char **argv)
     }
     else
     {
+        Find_a_Repository
+
         bool flag = false;
         FILE *fp = fopen(".sgit/.branches/BranchesList.txt", "a+");
         if (fp == NULL)
@@ -1723,6 +1875,16 @@ void grep(int argc, char **argv)
 
 void check_out(char *dest)
 {
+    char cwd[512];
+    getcwd(cwd, sizeof(cwd));
+
+    Find_a_Repository
+
+        if (dir_exists(".sgit/.staging"))
+    {
+        perror("Please commit your changes first!!\n");
+        exit(1);
+    }
 
     // If this is HEAD
     if (!strcmp(dest, "HEAD"))
@@ -1733,8 +1895,6 @@ void check_out(char *dest)
     // If this is a commit ID>>
     else if (isnumber(dest))
     {
-        char cwd[512];
-        getcwd(cwd, sizeof(cwd));
         FILE *fp = fopen(".sgit/.commits/log.txt", "r");
         if (fp == NULL)
         {
@@ -1898,7 +2058,7 @@ void revert(int argc, char **argv)
     else
     {
         if (!strcmp(argv[2], "-m"))
-            strcpy(commit_ID, argv[3]);
+            strcpy(message, argv[3]);
 
         if (!strncmp(argv[argc - 1], "HEAD", strlen("HEAD")))
         {
@@ -1929,7 +2089,8 @@ void revert(int argc, char **argv)
         {
             rewind(fp);
             while (fgets(buffer, sizeof(buffer), fp))
-                if (!strncmp(buffer, "number", strlen("numbetr")))
+            {
+                if (!strncmp(buffer, "number", strlen("number")))
                 {
                     char temp[128];
                     sprintf(temp, "number%s\n", commit_ID);
@@ -1941,15 +2102,150 @@ void revert(int argc, char **argv)
                         break;
                     }
                 }
+            }
         }
     }
 
     fclose(fp);
-    check_out(commit_ID);
 
+    // check_out(commit_ID)
+    char cwd[512];
+    getcwd(cwd, sizeof(cwd));
+    fp = fopen(".sgit/.commits/log.txt", "r");
+    if (fp == NULL)
+    {
+        exit(1);
+    }
+    char number100[256] = "number";
+    strcat(number100, commit_ID);
+    strcat(number100, "\n");
+    while (fgets(buffer, sizeof(buffer), fp))
+    {
+        if (!strcmp(buffer, number100))
+        {
+            fgets(buffer, sizeof(buffer), fp);
+            fgets(buffer, sizeof(buffer), fp);
+            fgets(buffer, sizeof(buffer), fp);
+            fgets(buffer, sizeof(buffer), fp);
+            fgets(buffer, sizeof(buffer), fp);
+
+            while (1)
+            {
+                fgets(buffer, sizeof(buffer), fp);
+                if (!strcmp(buffer, "\n"))
+                {
+                    break;
+                }
+                buffer[strcspn(buffer, "\n")] = '\0';
+                number100[strcspn(number100, "\n")] = '\0';
+                char command[512];
+                sprintf(command, "rm %s ", buffer);
+                system(command);
+                sprintf(command, "cp -ur .sgit/.commits/%s/. %s ", number100, cwd);
+                system(command);
+            }
+            break;
+        }
+    }
+    fclose(fp);
+
+    /* If we do not have '-n' flag, should do a new commit of working directory to the repository. */
+    puts(message);
     if (need_to_new_commit)
     {
-        commit(message, "-m");
+        char cwd[1024];
+
+        char path_of_commits[1024];
+        char buffer[2048];
+
+        getcwd(cwd, sizeof(cwd));
+
+        if (strlen(message) > 72)
+        {
+            perror("The message is too long\n");
+            exit(1);
+        }
+        if (strlen(message) < 3)
+        {
+            perror("The message is too short\n");
+            exit(1);
+            ;
+        }
+        // if(!precommit_situation())
+        // {
+        //     perror("\n!!Warning!!\nYou have some failed hooks!\n\n");
+        //     exit(1);
+        // }
+        int commitID = 0;
+        FILE *hash = fopen(".sgit/.commits/hash_commit.txt", "r");
+        if (hash == NULL)
+        {
+            perror("Try again later\n");
+            exit(1);
+        }
+        fscanf(hash, "%d", &commitID);
+        fclose(hash);
+        hash = fopen(".sgit/.commits/hash_commit.txt", "w");
+        commitID++;
+        fprintf(hash, "%d", commitID);
+        fclose(hash);
+        FILE *current_commit = fopen(".sgit/.branches/CurrentCommitID.txt", "w");
+        fprintf(current_commit, "%d", commitID);
+        fclose(current_commit);
+
+        sprintf(path_of_commits, ".sgit/.commits/number%d", commitID);
+
+        FILE *original_FILE = fopen(".sgit/.commits/log.txt", "r");
+        FILE *temp_FILE = fopen(".sgit/.commits/temp.txt", "w");
+        char *name = find_name();
+        char *email = find_email();
+        char *branch = find_current_branch();
+        fprintf(temp_FILE, "number%d\n%s\n%s\n%s\n%s\n", commitID, branch, message, name, email);
+        free(name);
+        free(branch);
+        time_t t = time(NULL);
+        struct tm tm = *localtime(&t);
+        fprintf(temp_FILE, "%d-%02d-%02d %02d:%02d:%02d\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+        char *dir = ".";
+        char *command = "find ";
+        char *options = "-type f -printf \"%p\\n\"";
+        char *full_command = malloc(strlen(command) + strlen(dir) + strlen(options) + 1);
+        sprintf(full_command, "%s%s %s", command, dir, options);
+        FILE *fp;
+        char path[1035];
+        fp = popen(full_command, "r");
+        puts(full_command);
+        if (fp == NULL)
+        {
+            printf("Failed to run command\n");
+            exit(1);
+        }
+        while (fgets(path, sizeof(path) - 1, fp))
+        {
+            puts(path);
+            char *tok = strchr(path, '/');
+            tok++;
+            if (tok[0] == '.')
+                continue;
+            fputs(tok, temp_FILE);
+        }
+        fprintf(temp_FILE, "\n");
+
+        char bufffer[1024];
+        while (fgets(bufffer, sizeof(bufffer), original_FILE))
+        {
+            fprintf(temp_FILE, "%s", bufffer);
+        }
+        fclose(temp_FILE);
+
+        remove(".sgit/.commits/log.txt");
+        rename(".sgit/.commits/temp.txt", ".sgit/.commits/log.txt");
+
+        pclose(fp);
+        free(full_command);
+        sprintf(buffer, "rsync -a --exclude=\".*\" %s   %s/ ", cwd, path_of_commits); // commit(message, "-m");
+        system(buffer);
     }
 }
 
@@ -1957,9 +2253,9 @@ int main(int argc, char **argv)
 {
     char main_command[100];
     strcpy(main_command, argv[1]);
-    Find_a_Repository
-        // init>>
-        if (!strcmp(main_command, "init"))
+    // Find_a_Repository
+    //  init>>
+    if (!strcmp(main_command, "init"))
     {
         create_hidden_dir();
         return 0;
@@ -1972,22 +2268,34 @@ int main(int argc, char **argv)
     // add>>
     else if (!strcmp(main_command, "add"))
     {
-        if (!strcmp(argv[2], "-f"))
-        {
-            for (int i = 3; i < argc; i++)
-                add(argv[i]);
-        }
-        else if (!strcmp(argv[2], "-n"))
+
+        if (!strcmp(argv[2], "-n"))
         {
             check_with_staging_area();
+            return 0;
         }
-        else
-            add(argv[2]);
+
+        for (int i = 2; i < argc; i++)
+        {
+            if (!strcmp(argv[i], "-f"))
+                continue;
+            add(argv[i]);
+        }
     }
     // reset>>
     else if (!strcmp(main_command, "reset"))
     {
-        reset(argv[2]);
+        if (!strcmp(argv[2], "-undo"))
+            reset(argv[2]);
+        else
+        {
+            for (int i = 2; i < argc; i++)
+            {
+                if (!strcmp(argv[i], "-f"))
+                    continue;
+                reset(argv[i]);
+            }
+        }
     }
     // status>>
     else if (!strcmp(main_command, "status"))
