@@ -1323,54 +1323,6 @@ int main(int argc, char **argv)
     {
         check_out(argv[2]);
     }
-    // grep>>
-    else if (!strcmp(main_command, "grep"))
-    {
-        grep(argc, argv);
-    }
-    // diff_command>>
-    else if (!strcmp(main_command, "diff"))
-    {
-        if (!strcmp(argv[2], "-f"))
-        {
-            if (argc == 5)
-                diff(argv[3], argv[4], "1-10000", "1-10000");
-            else
-                diff(argv[3], argv[4], argv[6], argv[8]);
-        }
-        else if (!strcmp(argv[2], "-c"))
-        {
-            char name_commit1[256], name_commit2[256];
-            sprintf(name_commit1, ".sgit/.commits/number%d", atoi(argv[3]));
-            sprintf(name_commit2, ".sgit/.commits/number%d", atoi(argv[4]));
-            diff_directories(name_commit1, name_commit2);
-        }
-    }
-    // stash>>
-    else if (!strcmp(main_command, "stash"))
-    {
-        stash_command(argc, argv);
-    }
-    // tag>>
-    else if (!strcmp(main_command, "tag"))
-    {
-        Run_tag(argc, argv);
-    }
-    // pre-commit>>
-    else if (!strcmp(main_command, "pre-commit"))
-    {
-        if (argc == 2)
-        {
-            Check_pre_commit();
-        }
-        else
-            hook(argc, argv);
-    }
-    // Revert>>
-    else if (!strcmp(main_command, "revert"))
-    {
-        revert(argc, argv);
-    }
     // maybe it is an alias>>
     else if (!load_alias(argv[1]))
     {
